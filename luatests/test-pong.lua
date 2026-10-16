@@ -35,6 +35,17 @@ local miss_injected = false
 local move_sent = false
 local quit_sent = false
 local green_pixels, yellow_pixels, red_pixels = 0, 0, 0
+local score_pixels_before, score_pixels_after
+
+local function count_yellow_score_pixels()
+  local count = 0
+  for y = 4, 21 do
+    for x = 18, 58 do
+      if mem:read_u8(video + y * 320 + x) == 0xfc then count = count + 1 end
+    end
+  end
+  return count
+end
 
 emu.register_frame_done(function()
   frames = frames + 1
@@ -56,6 +67,7 @@ emu.register_frame_done(function()
     paddle_before = read_u16_be(state + 8)
     score_before = read_u32_be(state + 14)
     misses_before = read_u32_be(state + 18)
+    score_pixels_before = count_yellow_score_pixels()
     -- Put the ball just above the paddle to exercise a real collision update.
     mem:write_u16(state + 0, paddle_before + 18)
     mem:write_u16(state + 2, 184)
@@ -67,12 +79,16 @@ emu.register_frame_done(function()
     score_after = read_u32_be(state + 14)
     assert(score_after == score_before + 1,
       'paddle hit did not increment the score exactly once')
+    score_pixels_after = count_yellow_score_pixels()
     -- Force the next downward step past the paddle and check the miss counter.
     mem:write_u16(state + 2, 194)
     mem:write_u16(state + 6, 2)
     miss_injected = true
   elseif frames == 390 and miss_injected then
     local state = 0x00010000 + game_state
+    score_pixels_after = count_yellow_score_pixels()
+    assert(score_pixels_after ~= score_pixels_before,
+      'yellow on-screen score did not change after a paddle hit')
     misses_after = read_u32_be(state + 18)
     assert(misses_after == misses_before + 1,
       'missed ball did not increment the miss counter exactly once')
@@ -97,9 +113,10 @@ emu.register_frame_done(function()
     quit_sent = true
   elseif frames == 500 and quit_sent then
     assert(read_u32_be(process_state) ~= 2, 'serial Q input did not exit Pong')
-    result:write(string.format('PASS FRAMES=%d GREEN_PIXELS=%d YELLOW_PIXELS=%d RED_PIXELS=%d SCORE=%d->%d MISSES=%d->%d DRIFT=%d->%d PADDLE=%d->%d QUIT=1\n',
+    result:write(string.format('PASS FRAMES=%d GREEN_PIXELS=%d YELLOW_PIXELS=%d RED_PIXELS=%d SCORE=%d->%d SCORE_PIXELS=%d->%d MISSES=%d->%d DRIFT=%d->%d PADDLE=%d->%d QUIT=1\n',
       frames, green_pixels, yellow_pixels, red_pixels, score_before,
-      score_after, misses_before, misses_after, drift_start, drift_end,
+      score_after, score_pixels_before, score_pixels_after, misses_before,
+      misses_after, drift_start, drift_end,
       paddle_before, read_u16_be(0x00010000 + game_state + 8)))
     result:close()
     machine:exit()

@@ -1,17 +1,18 @@
         INCLUDE 'sdk/asm/ndos_syscall.inc'
+        INCLUDE 'sdk/asm/ndos_process.inc'
         INCLUDE 'build/map.inc'
         ORG     0
 
-SCREEN_W        EQU     320
+SCREEN_W        EQU     160
 SCREEN_H        EQU     200
 BALL_SIZE       EQU     5
 PADDLE_W        EQU     40
 PADDLE_H        EQU     5
 PADDLE_Y        EQU     190
-PADDLE_ACCEL    EQU     5       ; pixels/tick^2 while a direction is held
-PADDLE_TAP_IMPULSE EQU  4       ; initial speed for a one-shot A/D press
+PADDLE_ACCEL    EQU     2       ; pixels/tick^2 while a direction is held
+PADDLE_TAP_IMPULSE EQU  8       ; responsive coast for a one-shot key press
 PADDLE_FRICTION EQU     1       ; speed lost each tick after release
-PADDLE_MAX_SPEED EQU    90      ; 700 pixels/second at the 100 Hz game tick
+PADDLE_MAX_SPEED EQU    8       ; 800 pixels/second at the 100 Hz game tick
 COURT_TOP       EQU     30
 
 BALL_X_OFF      EQU     0
@@ -36,6 +37,13 @@ KBD_DATA        EQU     VIRTUAL_INPUT_BASE+4
 ; game window. Q returns to the NDOS shell.
 START:
         LEA     GAME_STATE(PC),A5
+        ; RUN2 copies this image into the second fixed slot. Use the slot
+        ; identity to give each independent instance one half of the MAME view.
+        MOVE.L  A5,D0
+        CMPI.L  #(NDOS_NEX_SLOT_B_BASE+GAME_STATE),D0
+        BNE.S   .LEFT_VIEW
+        MOVE.W  #SCREEN_W,VIEW_X_OFF(A5)
+.LEFT_VIEW:
         LEA     TITLE_TEXT(PC),A1
         MOVEQ   #NDOS_SYS_PUTS,D0
         TRAP    #0
@@ -284,16 +292,16 @@ UPDATE_STATE:
         BLO.S   .MISSES_OK
         CLR.L   MISSES_OFF(A5)
 .MISSES_OK:
-        MOVE.W  #160,BALL_X_OFF(A5)
+        MOVE.W  #(SCREEN_W/2),BALL_X_OFF(A5)
         MOVE.W  #100,D1
-        MOVE.W  #2,BALL_DY_OFF(A5)
+        MOVE.W  #1,BALL_DY_OFF(A5)
         MOVE.W  MISSES_OFF(A5),D2
         BTST    #0,D2
         BEQ.S   .SERVE_RIGHT
-        MOVE.W  #-2,BALL_DX_OFF(A5)
+        MOVE.W  #-1,BALL_DX_OFF(A5)
         BRA.S   .SAVE_Y
 .SERVE_RIGHT:
-        MOVE.W  #2,BALL_DX_OFF(A5)
+        MOVE.W  #1,BALL_DX_OFF(A5)
 .SAVE_Y:
         MOVE.W  D1,BALL_Y_OFF(A5)
         RTS
@@ -334,14 +342,29 @@ DRAW_PADDLE:
 ; Yellow score and red miss counter, each displayed as three seven-segment digits.
 DRAW_HUD:
         MOVEM.L D0-D4,-(A7)
+        ; Clear the old seven-segment glyphs before drawing changed digits.
+        ; Without this, score 000 plus score 001 still looks like 000 because
+        ; the segments that turn off are never erased.
+        MOVE.W  #20,D0
+        MOVEQ   #5,D1
+        MOVEQ   #37,D2
+        MOVEQ   #14,D3
+        MOVEQ   #COLOR_BLACK,D4
+        BSR.W   DRAW_RECT
         MOVE.L  SCORE_OFF(A5),D0
-        MOVE.W  #112,D1
+        MOVE.W  #20,D1
         MOVEQ   #5,D2
         MOVEQ   #0,D4
         MOVE.B  #COLOR_YELLOW,D4
         BSR.W   DRAW_NUMBER
+        MOVE.W  #105,D0
+        MOVEQ   #5,D1
+        MOVEQ   #37,D2
+        MOVEQ   #14,D3
+        MOVEQ   #COLOR_BLACK,D4
+        BSR.W   DRAW_RECT
         MOVE.L  MISSES_OFF(A5),D0
-        MOVE.W  #192,D1
+        MOVE.W  #105,D1
         MOVEQ   #5,D2
         MOVEQ   #0,D4
         MOVE.B  #COLOR_RED,D4
@@ -447,8 +470,9 @@ DRAW_COURT:
 DRAW_RECT:
         MOVEM.L D0-D5/A0-A1,-(A7)
         LEA     VIRTUAL_VIDEO_BASE,A0
-        MULU.W  #SCREEN_W,D1
+        MULU.W  #VIRTUAL_VIDEO_WIDTH,D1
         ADDA.L  D1,A0
+        ADD.W   VIEW_X_OFF(A5),D0
         EXT.L   D0
         ADDA.L  D0,A0
         SUBQ.W  #1,D2
@@ -459,18 +483,22 @@ DRAW_RECT:
 .COLUMN:
         MOVE.B  D4,(A1)+
         DBF     D5,.COLUMN
-        ADDA.L  #SCREEN_W,A0
+        ADDA.L  #VIRTUAL_VIDEO_WIDTH,A0
         DBF     D3,.ROW
         MOVEM.L (A7)+,D0-D5/A0-A1
         RTS
 
 CLEAR_SCREEN:
         LEA     VIRTUAL_VIDEO_BASE,A0
-        MOVE.W  #15999,D0
-        MOVEQ   #COLOR_BLACK,D1
-.CLEAR:
-        MOVE.L  D1,(A0)+
-        DBF     D0,.CLEAR
+        ADDA.W  VIEW_X_OFF(A5),A0
+        MOVE.W  #(SCREEN_H-1),D0
+.CLEAR_ROW:
+        MOVEQ   #((SCREEN_W/4)-1),D1
+.CLEAR_LONG:
+        CLR.L   (A0)+
+        DBF     D1,.CLEAR_LONG
+        ADDA.L  #(VIRTUAL_VIDEO_WIDTH-SCREEN_W),A0
+        DBF     D0,.CLEAR_ROW
         RTS
 
 TITLE_TEXT:
@@ -479,12 +507,14 @@ TITLE_TEXT:
         EVEN
 
 GAME_STATE:
-        DC.W    160,100,2,2,140
+        DC.W    (SCREEN_W/2),100,1,1,60
         DC.L    0,0,0
 PADDLE_VX_OFF  EQU     22
         DC.W    0
 PADDLE_INPUT_OFF EQU   24
         DC.B    0,0
+VIEW_X_OFF     EQU     26
+        DC.W    0
 
 ; Seven-segment bits: top, upper-right, lower-right, bottom,
 ; lower-left, upper-left, middle.

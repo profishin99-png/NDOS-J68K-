@@ -5,6 +5,7 @@
 *-----------------------------------------------------------
         INCLUDE 'build/c-map.inc'
         INCLUDE 'kernel/pcb.inc'
+        INCLUDE 'sdk/asm/ndos_process.inc'
 
         ORG     $000000
 
@@ -86,8 +87,8 @@ SECTOR_BUFFER EQU $00180000
 ; NDOS memory map
 ;-----------------------------------------------------------
 
-PROGRAM_BASE        EQU     $00010000
-PROGRAM_LIMIT       EQU     $0001FFFF
+PROGRAM_BASE        EQU     NDOS_NEX_SLOT_A_BASE
+PROGRAM_LIMIT       EQU     NDOS_NEX_SLOT_A_LIMIT
 ; MAME-only experimental large-program area. Normal NEX apps remain below it.
 LARGE_PROGRAM_BASE  EQU     $00030000
 LARGE_PROGRAM_LIMIT EQU     $000FFFFF
@@ -95,8 +96,8 @@ PROGRAM_REGION_SIZE EQU     $00010000
 
 ; Scheduler Rev. 1 second physical NEX slot.  This is a proposed software
 ; allocation inside the existing 2 MiB SRAM; the original Slot A ABI remains.
-PROGRAM_B_BASE        EQU     $00020000
-PROGRAM_B_LIMIT       EQU     $0002FFFF
+PROGRAM_B_BASE        EQU     NDOS_NEX_SLOT_B_BASE
+PROGRAM_B_LIMIT       EQU     NDOS_NEX_SLOT_B_LIMIT
 PROGRAM_B_REGION_SIZE EQU     $00010000
 
 ; J68K/MAME MC68681 virtual console (channel A, stride 4)
