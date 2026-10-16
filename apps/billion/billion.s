@@ -14,13 +14,15 @@ START:
         TRAP    #0
         MOVE.L  D0,START_TICKS
 
-        ; Count upward to one billion.
-        MOVEQ   #0,D0
+        ; Count down from one billion to zero. MOVEQ only accepts an 8-bit
+        ; signed immediate, so load this 32-bit value with MOVE.L.
+        MOVE.L  #COUNT_LIMIT,D0
+
 COUNT_LOOP:
         SUBQ.L  #1,D0
-        CMP.L   #COUNT_LIMIT,D0
+        TST.L   D0
         BNE.S   COUNT_LOOP
-        MOVE.L  D0,COUNT_RESULT
+        MOVE.L  #COUNT_LIMIT,COUNT_RESULT
 
         ; Elapsed seconds are whole seconds from the nominal 100 Hz tick count.
         MOVEQ   #NDOS_SYS_GET_TICKS,D0
@@ -69,7 +71,7 @@ EXIT_HANG:
         BRA.S   EXIT_HANG
 
 TITLE:
-        DC.B    13,10,'COUNTING TO ONE BILLION...',13,10,0
+        DC.B    13,10,'COUNTING TO ONE BILLION....',13,10,0
 COUNT_TEXT:
         DC.B    'COUNT: ',0
 TIME_TEXT:
