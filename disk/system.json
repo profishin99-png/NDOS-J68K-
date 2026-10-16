@@ -1,0 +1,12 @@
+{
+  "label": "J68KSYSTEM",
+  "files": [
+    {"source": "build/HELLO.NEX", "destination": "HELLO.NEX"},
+    {
+      "source": "build/ndos.bin",
+      "destination": "NDOS.SYS",
+      "attributes": ["read_only", "system", "archive"]
+    },
+    {"source": "disk/files/README.TXT", "destination": "README.TXT"}
+  ]
+}

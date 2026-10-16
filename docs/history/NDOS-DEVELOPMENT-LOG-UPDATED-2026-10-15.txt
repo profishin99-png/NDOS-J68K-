@@ -1,0 +1,232 @@
+
+NDOS Development Log: Last Few Days
+
+We actually got a fairly ridiculous amount done. More importantly, most of it was kernel architecture, not just adding commands until the source file became sentient.
+
+User-mode execution became real. NDOS now launches NEX programs through a proper MC68020 exception frame and RTE, with user code actually running with S=0.
+The syscall boundary works. User programs can enter the kernel through TRAP #0, use services such as SYS_PUTS, and return to user mode correctly.
+Process exit works. SYS_EXIT records the exit state/code, restores the kernel stack, and returns control to the NDOS shell instead of leaving the machine stranded in userland.
+NEX Rev 0 became a real executable format. We established the NDOS magic, file/image size, entry-point offset, stack-size fields, validation rules, and position-independent executable requirement.
+The NEX loader works. NDOS validates an executable, copies its image into the $00010000 process region, computes its entry point, constructs its execution environment, and launches it.
+Position-independent NEX code was tested. The loaded program continued working after being copied to its actual process address rather than relying on its assembly-time location.
+PCB Rev 0 was introduced. NDOS now has actual process bookkeeping including PID, state, base, size, entry point, stack information, saved kernel SSP, and exit code.
+Process states became meaningful. We established UNUSED, READY, RUNNING, and EXITED, giving the scheduler something concrete to manage rather than merely knowing that "some program exists."
+Scheduler Rev 0 works. TRAP #1 enters supervisor mode, reaches the scheduler, increments YIELD_COUNT, and RTEs back into the same user process. That proves the basic yield path before we attempt real context switching.
+User exceptions became recoverable. A broken user program can be terminated and returned to the NDOS shell rather than taking the entire operating system down with it.
+Kernel panic behavior was separated from user-process failure. With no running process, the fatal path retains the $DEADBEEF diagnostic marker and halts rather than pretending everything is recoverable.
+Startup state was cleaned up. Important runtime variables are explicitly initialized instead of depending on whatever happens to be sitting in simulator memory. A depressingly effective way to eliminate ghosts.
+The command parser got repaired. We found the pointer-state issue around STRCMP and corrected command parsing rather than blaming innocent commands for memory corruption.
+We designed the storage architecture. NDOS now has a clear intended layering:
+FAT16 → block-device API → RAM disk now / SD card later.
+The RAM-disk map was established. $00100000-$0010FFFF gives us 64 KiB of storage, divided into 128 × 512-byte sectors, with a separate 512-byte sector buffer planned at $00110000.
+BLOCK_WRITE's API was designed. D0 supplies the sector number, A0 supplies the source buffer, and the routine returns success/error. It is an ordinary kernel subroutine, not a syscall.
+BLOCK_WRITE range validation was worked out. Sector numbers are unsigned, valid sectors are 0–127, and sector 128 must fail.
+Sector-address calculation is now working. We tested the transformation from sector number → sector × 512 → RAMDISK_BASE + offset. Our test produced D0=$E00 and A1=$00100E00, correctly identifying sector 7.
+We settled the alignment strategy. Block buffers will initially be 4-byte aligned, allowing the 68020 to move sectors as longwords without making the first block driver solve arbitrary-buffer alignment.
+We designed the actual sector transfer. D3 serves as the transfer counter, with 128 longword transfers producing exactly 512 bytes. (A0)+ and (A1)+ advance source and destination four bytes per iteration.
+We clarified file size versus sector size. BLOCK_WRITE always transfers 512 bytes. A 500-byte file still occupies a sector; the filesystem records that only 500 bytes are meaningful. This keeps file semantics out of the block driver.
+We checked the storage/NEX relationship. The existing NEX loader remains useful. Eventually the source simply changes from an embedded NEX image to FAT16 → BLOCK_READ → buffer → LOAD_NEX. Executables still run from process memory, not directly from the RAM disk.
+We planned IKD without starting it. The Interactive Kernel Debugger will eventually provide supervisor-level memory/register/PCB inspection and later exception debugging on the physical J68K. But we deliberately stopped feature creep and decided to finish the RAM disk first.
+test program:
+PROGRAM_ENTRY:
+
+       LEA     PROGRAM_MESSAGE(PC),A1
+        MOVEQ   #7,D0
+        TRAP    #0
+      
+        TRAP    #1
+
+        LEA     AFTER_YIELD(PC),A1
+        MOVEQ   #7,D0
+        TRAP    #0
+
+        MOVEQ   #4,D0
+        TRAP    #0
+
+.HANG:
+        BRA     .HANG
+
+PROGRAM_MESSAGE:
+        DC.B    CR,LF,'BEFORE TRAP 1',CR,LF,0
+
+AFTER_YIELD:
+      DC.B    'AFTER TRAP 1',CR,LF,0
+
+PROGRAM_END:
+
+So our immediate position is:
+
+BLOCK_WRITE
+ ├─ API design             ✓
+ ├─ range checking         ✓
+ ├─ sector offset          ✓
+ ├─ destination address    ✓
+ ├─ alignment strategy     ✓
+ ├─ 512-byte copy design   ✓
+ ├─ test actual copy       ← NOW
+ └─ boundary tests
+
+BLOCK_READ                 NEXT
+raw RAM-disk verification  NEXT
+RAM disk Rev 0             COMPLETE AFTER THAT
+IKD                        AFTER RAM DISK
+Scheduler Rev 1 A→B→A      AFTER IKD
+FAT16                      LATER
+
+  9/23/26 fixed bugs &
+  implemented start of ram disk
+  
+ 9/24/26
+moved ndos to MAME virtual machine   Codex made a kdr
+
+ 9/24/26 bug fixes finished ram disk and added duart irq
+
+
+9/26/26 implementing C code fat12 file system and added file uploader
+
+
+9/27/26 added sys calls 8  9 10 11 and 12  made a tool chain and ndos apps
+removed crash command 
+
+9/28/26 added syscall 15 for binary-to-decimal output
+added CPU exception vector error numbers and kept $DEADBEEF panic marker
+cleaned and organized the NDOS workspace
+
+10/3/26 added scheduler rev 1 and running more then 1 program
+
+10/4/26 added FAT12 file attributes: read-only, hidden, system, archive.
+Added syscall 18 SET_ATTRIBUTES and ATTRIB.NEX.
+hidden files are no longer shown in normal listing
+read-only and system files are now  protected from being deleted.
+
+ 1. Add BLOCK_READ beside BLOCK_WRITE. DONE
+2. Add a RAMDISKTEST command that writes and reads all 128 sectors. DONE
+3. Verify every sector with a distinct pattern. DONE
+4. Add a level-2 DUART vector and interrupt handler. DONE
+5. Add a keyboard ring buffer. 
+6. Decode ESC [ A/B/C/D into arrow-key codes. 
+7. Change the shell to consume the ring buffer.
+8. Add ROM, SRAM, overlay and DUART POST checks to boot.s.
+9. Rebuild the 1 MiB ROM and run MAME debugger/smoke tests.
+plus RAM-disk block tests → cooperative scheduler → FAT16 → external NEX files → timer preemption.
+
+
+current memory map
+00000000–001FFFFF   2 MiB SRAM
+00000000–0000FFFF   Reset ROM alias while overlay is enabled
+00010000–0001FFFF   NDOS program/NEX area
+00100000–0010FFFF   64 KiB NDOS RAM disk
+00110000–001101FF   NDOS 512-byte sector buffer
+00F00000–00F000FF   Proposed MC68681 DUART
+F0000000–F0000FFF   Proposed supervisor CPLD1 core aperture
+FFF00000–FFFFFFFF   Permanent 1 MiB boot ROM
+FFFFFFF0–FFFFFFFF   CPU-space interrupt acknowledge cycles
+
+NDOS low-memory layout
+NDOS currently uses the low SRAM as follows:
+Address	Use
+0x00000000–0x00000003	Initial SSP vector
+0x00000004–0x00000007	Initial PC vector
+0x00000008	Bus-error vector
+0x0000000C	Address-error vector
+0x00000010	Illegal-instruction vector
+0x00000014	Divide-by-zero vector
+0x00000018	CHK exception vector
+0x0000001C	TRAPV vectorf
+0x00000020	Privilege-violation vector
+0x00000070	NDOS timer interrupt vector
+0x00000080	TRAP #0 vector
+0x00000084	TRAP #1 vector
+0x00000100	NDOS kernel entry/start address
+0x00010000–0x0001FFFF	Program/NEX region
+
+Current stable NDOS
+    ↓
+FAT12 RAM-disk filesystem
+    ↓
+Filesystem-backed NEX loading
+    ↓
+Stable syscall ABI
+    ↓
+Two-process cooperative scheduler
+    ↓
+PID, wait, sleep and process states
+    ↓
+Timer-driven preemptive scheduler
+    ↓
+Software threads
+    ↓
+68881/68882 process context
+    ↓
+CPLD protection and physical FPU integration
+
+DUART_MR1A = 0x00F00000
+DUART_SRA  = 0x00F00004
+DUART_CRA  = 0x00F00008
+DUART_TBA  = 0x00F0000C
+DUART_RBA  = 0x00F0000C
+
+fat 12 plan Little-endian read/write helpers.
+BPB format and validation.
+FAT12 entry get/set tests.
+Empty root-directory listing.
+8.3 filename conversion.
+Find a free root-directory entry.
+Find one free cluster.
+Create a one-cluster file.
+Read the one-cluster file.
+Allocate and read a multi-cluster chain.
+Detect a corrupt or looping chain.
+Delete a file and free its cluster chain.
+Put HELLO.NEX onto the RAM disk.
+Change RUN to find and load HELLO.NEX through FAT12.
+---
+
+## Read-only NDOS bug audit — 2026-10-15
+
+Scope: scanned the current NDOS source, C/FAT12 layer, build scripts, scheduler documentation, and available regressions. No source code was changed. Findings below are labeled so they can be fixed one at a time.
+
+### Confirmed findings
+
+1. **[P1 — RUNTIME RISK: FPU context is not part of a task switch]**
+   The scheduler saves/restores `D0-D7/A0-A6`, `USP`, `SSP`, and the CPU exception frame, but the PCB has no 68881/68882 state and the switch path does not execute `FSAVE`/`FRESTORE` or equivalent. The syscall implementation uses shared `FP0`. If two runnable programs use the FPU across a yield or timer preemption, one can overwrite the other's FP registers/control state. FPU use from multiple processes should be considered unsafe until per-task FP state is saved and restored.
+   Evidence: `kernel/scheduler.s` save/restore path; `kernel/pcb.inc` PCB ends at `PCB_SAVED_USP`; `ndos.s` `SYS_FADD_S`/`SYS_FSUB_S` use `FP0`.
+
+2. **[P2 — ABI DOCUMENTATION DEFECT: syscall number width disagrees]**
+   `c/include/syscall.h` says the syscall number is in `D0.W`; the ABI document says `D0.L`, and `ndos.s` validates the full `D0.L` against 20 before indexing the table. A caller that sets only the low word while leaving the upper word nonzero can be rejected as an invalid syscall. The public convention needs one consistent zero-extended width.
+   Evidence: `c/include/syscall.h` lines 10–13; `docs/NDOS-SYSCALL-ABI.md` lines 18–22; `ndos.s` lines 1949–1956.
+
+3. **[P2 — STALE ABI DOCUMENTATION: TRAP #1 and process exit]**
+   The syscall ABI guide still says `TRAP #1` only increments `YIELD_COUNT` and says `SYS_EXIT` is a single-running-program model. Current scheduler code switches among runnable processes, and current emulator regressions exercise two NEX instances and Task B exit/resume. These statements can lead application and kernel work in the wrong direction.
+   Evidence: `docs/NDOS-SYSCALL-ABI.md` lines 25 and 38 versus `docs/SCHEDULER-REV1.md` lines 7–12 and the passing `test-run2` / exit-order regressions.
+
+4. **[P2 — TEST RUNNER FRAGILITY: fixed exit-order image path]**
+   `tools/test_exit_order.py` always overwrites `build/test-results/exit-order-test.img`. The first audit attempt failed with an uncaught `PermissionError` while copying to that fixed path; after the file became available, the same test passed. This is a test isolation/diagnostic problem, not evidence of a scheduler failure. A test run can fail if another MAME process or test still has that artifact open.
+   Evidence: `tools/test_exit_order.py` lines 16 and 26; first run returned `PermissionError`, rerun passed with `TASK_A_STATE=4 TASK_B_STATE=4 CURRENT_PCB=000028A0 SWITCHES=1`.
+
+5. **[P2 — TEST GAP: ATTRIB has no dedicated regression]**
+   The current automated test inventory has no ATTRIB/attribute-setting regression. The feature changes persistent FAT directory metadata and is relied on by delete protection and hidden-file filtering, so a regression should eventually cover setting/clearing supported bits, rejecting unsupported bits, hidden-file enumeration, and read-only/system deletion rejection. This is a coverage gap; the scan did not prove the implementation itself fails.
+
+### Known limitations, not newly reported as bugs
+
+- The 16-entry PCB table is capacity reservation, not a 16-process loader. `FIND_UNUSED_PCB` exists in `kernel/scheduler.s`, but the current `.NEX` launch path still uses the two established program slots. The scheduler document already calls this out.
+- Scheduler switching is experimental and MAME-only verified. It does not establish real board interrupt timing, CPLD timing, memory protection, or bus-error/coprocessor-frame switching.
+- Task-private console output policy is currently tailored to the two demonstration tasks; do not assume it is a complete terminal/session model for 16 processes.
+
+### Verification performed
+
+- `Build.cmd`: PASS; rebuilt C objects, NDOS/BIOS assembly, NEX applications, FAT12 RAM/SD images, and split 1 MiB ROM.
+- `tools/test_timer_preempt.py`: PASS; `TICK_DELTA=1000`, `YIELD_DELTA=0`, `SWITCH_DELTA=654`.
+- `tools/test_sd_runtime.py`: PASS; NDOS found and read imported `SDCOPY.TXT` (141 bytes) from the SD image.
+- `tools/test_pong.py`: PASS; framebuffer colors, score/miss increments, paddle drift/input, and Q exit assertions passed.
+- `tools/test_exit_order.py`: PASS on rerun; Task A and Task B exited and returned to shell as expected. Initial attempt hit the fixed-image lock described above.
+- These are software/build and MAME-emulation results only; they do not verify physical J68K hardware.
+
+### Suggested fix order for the owner
+
+1. Decide/document the syscall number register width and make the C header match the actual dispatcher contract.
+2. Update the stale TRAP #1 / SYS_EXIT descriptions in the syscall guide.
+3. Decide whether FPU-using processes are forbidden for now or add per-process FPU context before relying on multitasking FPU programs.
+4. Add an ATTRIB regression when you are ready to work on that area.
+5. Make the exit-order test use an isolated per-run image path or report a clear lock failure instead of a traceback.
+

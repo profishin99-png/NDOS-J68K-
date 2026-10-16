@@ -1,0 +1,13 @@
+# Generated build products, test artifacts, and ROM/NEX output.
+/build/
+
+# Mutable local disk images and historical disk backups.
+/disk/backup/
+/disk/j68k/*.img
+/disk/j68k/ramdisk/
+
+# Local editor and host artifacts.
+/.vscode/
+__pycache__/
+*.py[cod]
+*.log

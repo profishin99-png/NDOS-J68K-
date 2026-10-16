@@ -1,0 +1,31 @@
+{
+  "folders": [{"path": "."}],
+  "settings": {
+    "files.associations": {
+      "*.s": "asm",
+      "*.c": "c",
+      "*.h": "c",
+      "*.ld": "ld"
+    },
+    "C_Cpp.default.compilerPath": "${workspaceFolder}\\..\\j68k-gcc\\toolchain\\m68k-elf\\bin\\m68k-elf-gcc.exe",
+    "C_Cpp.default.compilerArgs": ["-mcpu=68020", "-msoft-float", "-ffreestanding"],
+    "C_Cpp.default.cStandard": "c11",
+    "workbench.editor.autoLockGroups": {
+      "jsProfileVisualizer.cpuprofile.table": true
+    }
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {"label": "NDOS: Build", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\Build.cmd"], "group": {"kind": "build", "isDefault": true}, "problemMatcher": []},
+      {"label": "NDOS: Run in MAME", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\Run-NDOS.cmd"], "problemMatcher": []},
+      {"label": "NDOS: Debug in MAME", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\Run-NDOS.cmd", "-debug"], "problemMatcher": []},
+      {"label": "NDOS: Registers in MAME", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\Debug-Registers.cmd"], "problemMatcher": []},
+      {"label": "NDOS: Import PC File", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\Import-File.cmd"], "problemMatcher": []}
+      ,{"label": "NDOS: Build and Mount BENCH", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\Build-Mount-Bench.cmd"], "problemMatcher": []}
+      ,{"label": "NDOS: Build System Disk", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\tools\\cmd\\Build-Disk.cmd"], "problemMatcher": []}
+      ,{"label": "NDOS: Install System Disk", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\Install-Disk.cmd"], "problemMatcher": []}
+      ,{"label": "NDOS: Disk Manager", "type": "process", "command": "C:\\Windows\\System32\\cmd.exe", "args": ["/d", "/c", "${workspaceFolder}\\Disk-Manager.cmd"], "problemMatcher": []}
+    ]
+  }
+}
